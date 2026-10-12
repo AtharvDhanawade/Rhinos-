@@ -1,0 +1,70 @@
+{
+  "students": [
+    {
+      "name": "Priya Rao",
+      "rollNo": "2026CS1010",
+      "avatarColor": "bg-blue-600",
+      "batch": "Batch 2026",
+      "phone": "9876543219",
+      "email": "priya.r@college.edu",
+      "last4Digits": "1010",
+      "updatedAt": "2026-09-28T08:39:15.301Z",
+      "id": "std-1010"
+    }
+  ],
+  "classes": [
+    {
+      "room": "Seminar Hall B",
+      "color": "#059669",
+      "name": "Communication Class",
+      "teacherEmail": "s.rao@college.edu",
+      "scheduleTime": "11:15 AM - 12:45 PM",
+      "classTimes": [
+        "10:00 AM - 11:00 AM",
+        "11:15 AM - 12:45 PM",
+        "01:30 PM - 02:30 PM"
+      ],
+      "code": "HS201",
+      "teacherName": "Prof. Sunita Rao",
+      "updatedAt": "2026-09-28T07:02:35.222Z",
+      "id": "cls-comm"
+    },
+    {
+      "id": "cls-tech",
+      "color": "#2563eb",
+      "room": "Lab 304",
+      "name": "Tech Class",
+      "sheetTabName": "",
+      "scheduleTime": "09:30 AM - 11:00 AM",
+      "teacherEmail": "sharma.faculty@college.edu",
+      "customGoogleSheetUrl": "",
+      "teacherName": "Prof. Rajesh Sharma",
+      "updatedAt": "2026-09-28T07:10:23.264Z",
+      "code": "CS401",
+      "classTimes": []
+    }
+  ],
+  "records": [
+    {
+      "id": "r1",
+      "studentId": "s1",
+      "studentRollNo": "2026CS1042",
+      "studentName": "Aarav Sharma",
+      "studentLast4": "1042",
+      "classId": "cls-tech",
+      "className": "Data Structures & Algorithms",
+      "date": "2026-09-14",
+      "time": "09:15:00",
+      "status": "present",
+      "weekNumber": 37,
+      "dayOfWeek": 1,
+      "markedVia": "fast_4digit",
+      "timestamp": 1789456500000,
+      "sessionId": "session-1",
+      "sessionTime": "",
+      "sessionTitle": ""
+    }
+  ],
+  "activeClassId": "cls-1790586835932",
+  "lastUpdated": "2026-09-29T04:20:56.995Z"
+}

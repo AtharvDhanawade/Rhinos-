@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "Student": {
+      "fields": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "rollNo": { "type": "string" },
+        "last4Digits": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "batch": { "type": "string" },
+        "avatarColor": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "roles": {
+        "read": ["all"],
+        "write": ["all"]
+      }
+    },
+    "ClassSubject": {
+      "fields": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "teacherEmail": { "type": "string" },
+        "room": { "type": "string" },
+        "color": { "type": "string" },
+        "scheduleTime": { "type": "string" }
+      },
+      "roles": {
+        "read": ["all"],
+        "write": ["all"]
+      }
+    },
+    "AttendanceRecord": {
+      "fields": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentRollNo": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentLast4": { "type": "string" },
+        "classId": { "type": "string" },
+        "className": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "status": { "type": "string" },
+        "weekNumber": { "type": "number" },
+        "dayOfWeek": { "type": "number" },
+        "markedVia": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "roles": {
+        "read": ["all"],
+        "write": ["all"]
+      }
+    },
+    "DeviceInfo": {
+      "fields": {
+        "deviceId": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "role": { "type": "string" },
+        "lastSeen": { "type": "string" }
+      },
+      "roles": {
+        "read": ["all"],
+        "write": ["all"]
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
