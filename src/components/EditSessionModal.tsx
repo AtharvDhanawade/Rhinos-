@@ -59,13 +59,11 @@ export const EditSessionModal: React.FC<EditSessionModalProps> = ({
   onSave,
   onDelete,
 }) => {
-  if (!isOpen || !sessionData) return null;
-
   const activeClassTimes = classTimes.length > 0 ? classTimes : DEFAULT_CLASS_TIMES;
 
-  const [date, setDate] = useState(sessionData.date);
-  const [title, setTitle] = useState(sessionData.title || '1st Class');
-  const [time, setTime] = useState(sessionData.time || '10:00 AM');
+  const [date, setDate] = useState(sessionData?.date || '');
+  const [title, setTitle] = useState(sessionData?.title || '1st Class');
+  const [time, setTime] = useState(sessionData?.time || '10:00 AM');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'absent' | 'present' | 'onduty'>('all');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -73,6 +71,7 @@ export const EditSessionModal: React.FC<EditSessionModalProps> = ({
   // Initialize status map for all students
   const [statuses, setStatuses] = useState<Record<string, AttendanceStatus>>(() => {
     const map: Record<string, AttendanceStatus> = {};
+    if (!sessionData) return map;
     const recMap = new Map<string, AttendanceRecord>();
     sessionData.records.forEach(r => recMap.set(r.studentId, r));
 
@@ -176,9 +175,12 @@ export const EditSessionModal: React.FC<EditSessionModalProps> = ({
   };
 
   const handleDelete = () => {
+    if (!sessionData) return;
     onDelete?.(sessionData.originalDate, sessionData.originalSessionId, classId);
     onClose();
   };
+
+  if (!isOpen || !sessionData) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">

@@ -79,6 +79,9 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
   const [sheetLayoutMode, setSheetLayoutMode] = useState<'matrix' | 'chronological' | 'session-roster'>('chronological');
   const [studentFilter, setStudentFilter] = useState<'all' | 'absent' | 'present'>('all');
   
+  // Date filtering mode: 'recorded-only' (Strictly dates where attendance was taken, e.g. 13th, 20th) vs 'all-week-days'
+  const [dateFilterMode, setDateFilterMode] = useState<'recorded-only' | 'all-week-days'>('recorded-only');
+  
   // QR View Mode: 'day' (selected day only - strict locked view) vs 'week' (full week matrix)
   const [qrMode, setQrMode] = useState<'day' | 'week'>('day');
   const [selectedDayForQr, setSelectedDayForQr] = useState<string>(getTodayDateString());
@@ -230,15 +233,7 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
     });
 
     if (sessionEntries.length === 0) {
-      const dateObj = new Date(todayStr + 'T00:00:00');
-      sessionEntries = [{
-        date: todayStr,
-        dayName: dateObj.toLocaleDateString('en-US', { weekday: 'short' }),
-        sessionId: 'session-1',
-        sessionTitle: '1st Class',
-        sessionTime: selectedClass.scheduleTime || '10:00 AM',
-        records: []
-      }];
+      return [];
     }
 
     return sessionEntries.map((entry, idx) => {
@@ -281,12 +276,87 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
         absenteesText: allAbsentees.length > 0 ? allAbsentees.join(', ') : 'None (100% Present)'
       };
     });
-  }, [allRecords, selectedClass.id, selectedClass.scheduleTime, students, todayStr]);
+  }, [allRecords, selectedClass.id, selectedClass.scheduleTime, students]);
 
-  // Session columns for the Weekly Matrix (View B)
-  // If there are 2, 3, or more classes of the same subject on any day, every single session gets its own separate column!
+  // Session columns for the Student Matrix (View B)
+  // By default (and as requested): ONLY include dates and sessions where attendance was ACTUALLY taken!
+  // e.g. If taken on 13th, then on 20th, only 13th and 20th appear as columns; other dates are omitted.
   const matrixSessionColumns = useMemo(() => {
-    const cols: Array<{
+    if (dateFilterMode === 'all-week-days') {
+      const cols: Array<{
+        colId: string;
+        dateStr: string;
+        dayName: string;
+        sessionId: string;
+        sessionTitle: string;
+        sessionTime: string;
+        hasRecords: boolean;
+      }> = [];
+
+      days.forEach(d => {
+        const recordsOnDay = weekClassRecords.filter(r => r.date === d.dateStr);
+        const sessionMap = new Map<string, { sessionId: string; sessionTitle: string; sessionTime: string; timestamp: number }>();
+
+        recordsOnDay.forEach(r => {
+          let sId = r.sessionId;
+          if (!sId || sId === 'session-1') {
+            if (r.sessionTime && r.sessionTime !== selectedClass.scheduleTime) {
+              sId = `time-${r.sessionTime.replace(/\s+/g, '')}`;
+            } else if (r.sessionTitle && r.sessionTitle !== '1st Class') {
+              sId = `title-${r.sessionTitle.replace(/\s+/g, '')}`;
+            } else {
+              sId = r.sessionId || 'session-1';
+            }
+          }
+
+          if (!sessionMap.has(sId)) {
+            sessionMap.set(sId, {
+              sessionId: sId,
+              sessionTitle: r.sessionTitle || (sId === 'session-1' ? '1st Class' : sId === 'session-2' ? '2nd Class' : sId === 'session-3' ? '3rd Class' : 'Class Session'),
+              sessionTime: r.sessionTime || r.time || selectedClass.scheduleTime || 'Session',
+              timestamp: r.timestamp || 0
+            });
+          }
+        });
+
+        if (sessionMap.size === 0) {
+          cols.push({
+            colId: `${d.dateStr}___session-1`,
+            dateStr: d.dateStr,
+            dayName: d.dayName,
+            sessionId: 'session-1',
+            sessionTitle: '1st Class',
+            sessionTime: selectedClass.scheduleTime || '10:00 AM',
+            hasRecords: false,
+          });
+        } else {
+          const sortedSessions = Array.from(sessionMap.values()).sort((a, b) => {
+            const numA = parseInt(a.sessionId.replace(/\D/g, '') || (a.sessionTitle.match(/\d+/)?.[0] || '1'), 10);
+            const numB = parseInt(b.sessionId.replace(/\D/g, '') || (b.sessionTitle.match(/\d+/)?.[0] || '1'), 10);
+            if (numA !== numB) return numA - numB;
+            return a.timestamp - b.timestamp;
+          });
+
+          sortedSessions.forEach(sess => {
+            cols.push({
+              colId: `${d.dateStr}___${sess.sessionId}`,
+              dateStr: d.dateStr,
+              dayName: d.dayName,
+              sessionId: sess.sessionId,
+              sessionTitle: sess.sessionTitle,
+              sessionTime: sess.sessionTime,
+              hasRecords: true,
+            });
+          });
+        }
+      });
+
+      return cols;
+    }
+
+    // Default: 'recorded-only' (Strictly dates where attendance was taken!)
+    const classAllRecords = allRecords.filter(r => r.classId === selectedClass.id);
+    const sessionMap = new Map<string, {
       colId: string;
       dateStr: string;
       dayName: string;
@@ -294,71 +364,50 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
       sessionTitle: string;
       sessionTime: string;
       hasRecords: boolean;
-    }> = [];
+      timestamp: number;
+    }>();
 
-    days.forEach(d => {
-      const recordsOnDay = weekClassRecords.filter(r => r.date === d.dateStr);
-      const sessionMap = new Map<string, { sessionId: string; sessionTitle: string; sessionTime: string; timestamp: number }>();
-
-      recordsOnDay.forEach(r => {
-        let sId = r.sessionId;
-        if (!sId || sId === 'session-1') {
-          if (r.sessionTime && r.sessionTime !== selectedClass.scheduleTime) {
-            sId = `time-${r.sessionTime.replace(/\s+/g, '')}`;
-          } else if (r.sessionTitle && r.sessionTitle !== '1st Class') {
-            sId = `title-${r.sessionTitle.replace(/\s+/g, '')}`;
-          } else {
-            sId = r.sessionId || 'session-1';
-          }
+    classAllRecords.forEach(r => {
+      let sId = r.sessionId;
+      if (!sId || sId === 'session-1') {
+        if (r.sessionTime && r.sessionTime !== selectedClass.scheduleTime) {
+          sId = `time-${r.sessionTime.replace(/\s+/g, '')}`;
+        } else if (r.sessionTitle && r.sessionTitle !== '1st Class') {
+          sId = `title-${r.sessionTitle.replace(/\s+/g, '')}`;
+        } else {
+          sId = r.sessionId || 'session-1';
         }
+      }
 
-        if (!sessionMap.has(sId)) {
-          sessionMap.set(sId, {
-            sessionId: sId,
-            sessionTitle: r.sessionTitle || (sId === 'session-1' ? '1st Class' : sId === 'session-2' ? '2nd Class' : sId === 'session-3' ? '3rd Class' : 'Class Session'),
-            sessionTime: r.sessionTime || r.time || selectedClass.scheduleTime || 'Session',
-            timestamp: r.timestamp || 0
-          });
-        }
-      });
-
-      if (sessionMap.size === 0) {
-        cols.push({
-          colId: `${d.dateStr}___session-1`,
-          dateStr: d.dateStr,
-          dayName: d.dayName,
-          sessionId: 'session-1',
-          sessionTitle: '1st Class',
-          sessionTime: selectedClass.scheduleTime || '10:00 AM',
-          hasRecords: false,
-        });
-      } else {
-        const sortedSessions = Array.from(sessionMap.values()).sort((a, b) => {
-          const numA = parseInt(a.sessionId.replace(/\D/g, '') || (a.sessionTitle.match(/\d+/)?.[0] || '1'), 10);
-          const numB = parseInt(b.sessionId.replace(/\D/g, '') || (b.sessionTitle.match(/\d+/)?.[0] || '1'), 10);
-          if (numA !== numB) return numA - numB;
-          return a.timestamp - b.timestamp;
-        });
-
-        sortedSessions.forEach(sess => {
-          cols.push({
-            colId: `${d.dateStr}___${sess.sessionId}`,
-            dateStr: d.dateStr,
-            dayName: d.dayName,
-            sessionId: sess.sessionId,
-            sessionTitle: sess.sessionTitle,
-            sessionTime: sess.sessionTime,
-            hasRecords: true,
-          });
+      const key = `${r.date}___${sId}`;
+      if (!sessionMap.has(key)) {
+        const dateObj = new Date(r.date + 'T00:00:00');
+        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+        sessionMap.set(key, {
+          colId: key,
+          dateStr: r.date,
+          dayName,
+          sessionId: sId,
+          sessionTitle: r.sessionTitle || (sId === 'session-1' ? '1st Class' : sId === 'session-2' ? '2nd Class' : sId === 'session-3' ? '3rd Class' : 'Class Session'),
+          sessionTime: r.sessionTime || r.time || selectedClass.scheduleTime || 'Session',
+          hasRecords: true,
+          timestamp: r.timestamp || 0
         });
       }
     });
 
-    return cols;
-  }, [days, weekClassRecords, selectedClass.scheduleTime]);
+    // Sort chronologically ascending (e.g. 13th first, then 20th next to it!)
+    return Array.from(sessionMap.values()).sort((a, b) => {
+      if (a.dateStr !== b.dateStr) return a.dateStr.localeCompare(b.dateStr);
+      const numA = parseInt(a.sessionId.replace(/\D/g, '') || '1', 10);
+      const numB = parseInt(b.sessionId.replace(/\D/g, '') || '1', 10);
+      if (numA !== numB) return numA - numB;
+      return a.timestamp - b.timestamp;
+    });
+  }, [dateFilterMode, days, weekClassRecords, allRecords, selectedClass.id, selectedClass.scheduleTime]);
 
   const getStudentColRecord = (studentId: string, col: { dateStr: string; sessionId: string; sessionTime?: string; sessionTitle?: string; hasRecords: boolean }): 'P' | 'A' | 'OD' | '-' => {
-    const dayRecords = weekClassRecords.filter(r => r.date === col.dateStr);
+    const dayRecords = allRecords.filter(r => r.classId === selectedClass.id && r.date === col.dateStr);
     if (dayRecords.length === 0 && !col.hasRecords) return '-';
     const rec = dayRecords.find(r => {
       if (r.studentId !== studentId) return false;
@@ -377,7 +426,7 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
     return 'A';
   };
 
-  // Analyze each student for the weekly matrix (multi-session aware)
+  // Analyze each student for the matrix (multi-session aware)
   const matrixStudentStats = useMemo(() => {
     return sortedStudents.map(student => {
       let presentCount = 0;
@@ -415,7 +464,7 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
         isFullPresent,
       };
     });
-  }, [sortedStudents, matrixSessionColumns, weekClassRecords]);
+  }, [sortedStudents, matrixSessionColumns, allRecords, selectedClass.id]);
 
   const studentsWithAbsenceCount = matrixStudentStats.filter(s => s.isAbsentee).length;
   const studentsWithFullAttendanceCount = matrixStudentStats.filter(s => s.isFullPresent).length;
@@ -688,7 +737,7 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement('a');
       link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `Attendance_Week_${selectedWeek}_${selectedClass.name.replace(/\s+/g, '_')}.csv`);
+      link.setAttribute('download', `Attendance_Register_${selectedClass.name.replace(/\s+/g, '_')}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -974,9 +1023,40 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
-                  <span>Weekly Student Matrix</span>
+                  <span>Student Matrix (Dates Taken)</span>
                 </button>
               </div>
+
+              {/* Date Filter for Matrix: Only Taken vs All Calendar Days */}
+              {sheetLayoutMode === 'matrix' && (
+                <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setDateFilterMode('recorded-only')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                      dateFilterMode === 'recorded-only'
+                        ? 'bg-emerald-700 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Only show dates where attendance was taken (e.g. 13th, 20th). Hide blank dates."
+                  >
+                    <span>Only Dates Taken ({matrixSessionColumns.length})</span>
+                    <span className="text-[10px] opacity-80 font-normal">✨ Recommended</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDateFilterMode('all-week-days')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+                      dateFilterMode === 'all-week-days'
+                        ? 'bg-slate-700 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Show all Mon-Fri calendar days of the selected week"
+                  >
+                    <span>All Calendar Days (Mon-Fri)</span>
+                  </button>
+                </div>
+              )}
 
               {/* Roster Filter: All vs Only Absentees */}
               <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
@@ -1185,70 +1265,85 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {chronologicalRows.map((row) => (
-                      <tr key={`${row.date}___${row.sessionId}`} className="hover:bg-blue-50/30 transition">
-                        <td className="py-2.5 px-2 border-r border-slate-200 text-center font-bold text-slate-400 bg-slate-50/80">
-                          {row.rowNumber}
-                        </td>
-                        <td className="py-2.5 px-3 border-r border-slate-200">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-slate-900 text-xs sm:text-sm">{row.date}</span>
-                            {row.isLatest && (
-                              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800 font-bold uppercase tracking-wider border border-emerald-300">
-                                Latest
-                              </span>
-                            )}
+                    {chronologicalRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-slate-500 font-sans bg-slate-50/50">
+                          <div className="max-w-md mx-auto space-y-2">
+                            <Clock className="w-8 h-8 text-slate-400 mx-auto" />
+                            <p className="font-bold text-slate-700 text-sm">No Attendance Logged Yet for {selectedClass.name}</p>
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                              Dates only appear here when attendance is actually taken (e.g. 13th, then 20th). 
+                              Take your first session on <strong>Page 1 (Speed Mode)</strong> or <strong>Page 3 (Roll Call)</strong> to see records appear here.
+                            </p>
                           </div>
-                          <div className="text-[11px] text-blue-700 font-mono font-bold flex items-center gap-1 mt-0.5">
-                            <Clock className="w-3 h-3 text-blue-500 shrink-0" />
-                            <span>{row.sessionTime || 'Time recorded'}</span>
-                            {row.sessionTitle && (
-                              <span className="text-slate-600 font-sans text-[10px] bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded font-medium">
-                                {row.sessionTitle}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-2 border-r border-slate-200 text-center text-slate-600">
-                          {row.day}
-                        </td>
-                        <td className="py-2.5 px-2 border-r border-slate-200 text-center text-slate-700">
-                          {row.enrolled}
-                        </td>
-                        <td className="py-2.5 px-2 border-r border-slate-200 text-center font-bold text-emerald-700 bg-emerald-50/20">
-                          {row.present}
-                        </td>
-                        <td className="py-2.5 px-2 border-r border-slate-200 text-center font-bold text-rose-600 bg-rose-50/20">
-                          {row.absent}
-                        </td>
-                        <td className="py-2.5 px-2 border-r border-slate-200 text-center font-semibold text-slate-800">
-                          {row.percent}
-                        </td>
-                        <td className="py-2.5 px-3 text-slate-700 font-sans text-xs border-r border-slate-200">
-                          {row.absent > 0 ? (
-                            <span className="text-rose-700 font-medium">{row.absenteesText}</span>
-                          ) : (
-                            <span className="text-emerald-700 font-medium">✨ All Present (100%)</span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModalForSession(row)}
-                            className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer mx-auto"
-                            title="Edit attendance, change student P/A status, date, or time"
-                          >
-                            <Edit2 className="w-3 h-3 text-amber-700" />
-                            <span>Edit</span>
-                          </button>
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      chronologicalRows.map((row) => (
+                        <tr key={`${row.date}___${row.sessionId}`} className="hover:bg-blue-50/30 transition">
+                          <td className="py-2.5 px-2 border-r border-slate-200 text-center font-bold text-slate-400 bg-slate-50/80">
+                            {row.rowNumber}
+                          </td>
+                          <td className="py-2.5 px-3 border-r border-slate-200">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-slate-900 text-xs sm:text-sm">{row.date}</span>
+                              {row.isLatest && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800 font-bold uppercase tracking-wider border border-emerald-300">
+                                  Latest
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-blue-700 font-mono font-bold flex items-center gap-1 mt-0.5">
+                              <Clock className="w-3 h-3 text-blue-500 shrink-0" />
+                              <span>{row.sessionTime || 'Time recorded'}</span>
+                              {row.sessionTitle && (
+                                <span className="text-slate-600 font-sans text-[10px] bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded font-medium">
+                                  {row.sessionTitle}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-2 border-r border-slate-200 text-center text-slate-600">
+                            {row.day}
+                          </td>
+                          <td className="py-2.5 px-2 border-r border-slate-200 text-center text-slate-700">
+                            {row.enrolled}
+                          </td>
+                          <td className="py-2.5 px-2 border-r border-slate-200 text-center font-bold text-emerald-700 bg-emerald-50/20">
+                            {row.present}
+                          </td>
+                          <td className="py-2.5 px-2 border-r border-slate-200 text-center font-bold text-rose-600 bg-rose-50/20">
+                            {row.absent}
+                          </td>
+                          <td className="py-2.5 px-2 border-r border-slate-200 text-center font-semibold text-slate-800">
+                            {row.percent}
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-700 font-sans text-xs border-r border-slate-200">
+                            {row.absent > 0 ? (
+                              <span className="text-rose-700 font-medium">{row.absenteesText}</span>
+                            ) : (
+                              <span className="text-emerald-700 font-medium">✨ All Present (100%)</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModalForSession(row)}
+                              className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1 shadow-2xs hover:shadow-xs active:scale-95 cursor-pointer mx-auto"
+                              title="Edit attendance, change student P/A status, date, or time"
+                            >
+                              <Edit2 className="w-3 h-3 text-amber-700" />
+                              <span>Edit</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             ) : (
-              /* View B: Weekly Student Matrix - Supports all extra class columns for the subject */
+              /* View B: Student Matrix - Supports all extra class columns for the subject */
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse font-mono">
                   <thead>
@@ -1301,6 +1396,19 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
                       <tr>
                         <td colSpan={6 + matrixSessionColumns.length} className="py-8 text-center text-slate-400 font-sans">
                           No students in roster. Add students in the Students page to populate the sheet.
+                        </td>
+                      </tr>
+                    ) : matrixSessionColumns.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-500 font-sans bg-slate-50/50">
+                          <div className="max-w-md mx-auto space-y-2">
+                            <Clock className="w-8 h-8 text-slate-400 mx-auto" />
+                            <p className="font-bold text-slate-700 text-sm">No Attendance Logged Yet for {selectedClass.name}</p>
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                              Dates only appear here when attendance is actually taken (e.g. 13th, then 20th). 
+                              Unrecorded calendar dates are hidden so your register stays completely clean.
+                            </p>
+                          </div>
                         </td>
                       </tr>
                     ) : filteredMatrixStudents.length === 0 ? (

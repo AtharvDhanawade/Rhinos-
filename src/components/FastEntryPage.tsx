@@ -793,7 +793,7 @@ export const FastEntryPage: React.FC<FastEntryPageProps> = ({
           finalTime,
           students,
           completeSessionRecords,
-          `${finalClassName}${activeSessionTitle ? ` (${activeSessionTitle})` : ''}`,
+          finalClassName,
           targetTabName
         );
         appendAttendanceToGoogleSheet(payload, { ...settings, googleSheetUrl: targetSheetUrl }).then(res => {

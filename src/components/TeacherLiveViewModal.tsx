@@ -30,8 +30,6 @@ export const TeacherLiveViewModal: React.FC<TeacherLiveViewModalProps> = ({
   weekNumber,
   allRecords
 }) => {
-  if (!isOpen) return null;
-
   const { start, end, days } = getWeekDateRange(weekNumber);
 
   // Filter records for this class & this week
@@ -125,6 +123,8 @@ export const TeacherLiveViewModal: React.FC<TeacherLiveViewModalProps> = ({
   const handlePrint = () => {
     window.print();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">

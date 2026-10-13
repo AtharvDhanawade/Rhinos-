@@ -174,6 +174,7 @@ export function buildSheetSessionPayload(
     classId: currentClass.id,
     className: finalClassName,
     sheetTabName: finalTabName,
+    tabName: finalTabName,
     date,
     time: time || '10:00 AM - 11:00 AM',
     teacherName: currentClass.teacherName,
@@ -231,8 +232,8 @@ export async function appendAttendanceToGoogleSheet(
     }
 
     if (token) {
-      // Determine tab name based on sync strategy
-      let customTab = payload.tabName || payload.className || 'Attendance';
+      // Determine tab name based on sync strategy (prioritize canonical sheetTabName to prevent duplicate pages)
+      let customTab = payload.sheetTabName || payload.tabName || payload.className || 'Attendance';
       if (settings.syncStrategy === 'per_class_tabs' && settings.classTabNames && payload.classId) {
         customTab = settings.classTabNames[payload.classId] || customTab;
       }

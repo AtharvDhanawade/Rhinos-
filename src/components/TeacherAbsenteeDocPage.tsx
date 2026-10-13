@@ -159,6 +159,10 @@ export const TeacherAbsenteeDocPage: React.FC<TeacherAbsenteeDocPageProps> = ({
          (!urlSessionId || (r.sessionId || 'session-1') === urlSessionId)
   );
 
+  const recordedDatesForCurrentClass = useMemo(() => {
+    return Array.from(new Set(allRecords.filter(r => r.classId === currentClass.id).map(r => r.date))).sort().reverse();
+  }, [allRecords, currentClass.id]);
+
   const recordMap = new Map<string, AttendanceRecord>();
   classRecords.forEach(r => recordMap.set(r.studentId, r));
 
@@ -748,6 +752,25 @@ export const TeacherAbsenteeDocPage: React.FC<TeacherAbsenteeDocPageProps> = ({
               onChange={(e) => setSelectedDate(e.target.value)}
               className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            {recordedDatesForCurrentClass.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                <span className="text-[10px] text-slate-400 font-semibold">Taken on:</span>
+                {recordedDatesForCurrentClass.slice(0, 5).map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setSelectedDate(d)}
+                    className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition ${
+                      selectedDate === d
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <button

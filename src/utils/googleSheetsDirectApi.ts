@@ -34,15 +34,20 @@ function urlOrOrTrim(str?: string): boolean {
   return Boolean(str && str.trim().length > 0);
 }
 
+export interface SheetTabInfo {
+  sheetId: number;
+  title: string;
+}
+
 /**
- * Fetches basic spreadsheet metadata (Title and sheet tab names)
+ * Fetches basic spreadsheet metadata (Title, sheet tab names, and sheetId numbers)
  */
 export async function getSpreadsheetDetails(
   spreadsheetId: string,
   accessToken: string
-): Promise<{ title: string; sheets: string[] }> {
+): Promise<{ title: string; sheets: string[]; sheetDetails: SheetTabInfo[] }> {
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties.title`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties(sheetId,title)`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -58,25 +63,173 @@ export async function getSpreadsheetDetails(
 
   const data = await res.json();
   const title = data.properties?.title || 'Google Sheet';
-  const sheets = (data.sheets || []).map((s: any) => s.properties?.title || 'Sheet1');
+  const sheetDetails: SheetTabInfo[] = (data.sheets || []).map((s: any) => ({
+    sheetId: s.properties?.sheetId ?? 0,
+    title: s.properties?.title || 'Sheet1',
+  }));
+  const sheets = sheetDetails.map(s => s.title);
 
-  return { title, sheets };
+  return { title, sheets, sheetDetails };
 }
 
 /**
- * Ensures a tab exists inside the spreadsheet; creates it if missing
+ * Normalizes tab titles for robust, typo-tolerant comparisons
+ */
+export function normalizeTabTitle(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Checks if two sheet tab titles refer to the same subject (e.g. handles singular vs plural "Foundations" vs "Foundation", case variations, session tags like "(1st Class)", etc.)
+ */
+export function isSimilarTabTitle(a: string, b: string): boolean {
+  const normA = normalizeTabTitle(a);
+  const normB = normalizeTabTitle(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+
+  // Strip session / class round indicators like "(1st Class)", "(2nd Class)", "(session 1)", "class session", etc.
+  const cleanA = normA.replace(/\b(1st|2nd|3rd|\d+th|session|class)\b/g, '').replace(/\s+/g, ' ').trim();
+  const cleanB = normB.replace(/\b(1st|2nd|3rd|\d+th|session|class)\b/g, '').replace(/\s+/g, ' ').trim();
+  if (cleanA && cleanB && cleanA === cleanB) return true;
+
+  // Compare singular/plural stems (e.g. "foundations of identity and communication" vs "foundation of identity and communication")
+  const wordsA = normA.split(' ').map(w => (w.endsWith('s') && w.length > 3 ? w.slice(0, -1) : w));
+  const wordsB = normB.split(' ').map(w => (w.endsWith('s') && w.length > 3 ? w.slice(0, -1) : w));
+  if (wordsA.join(' ') === wordsB.join(' ')) return true;
+
+  // Substring matching for long titles (prevents branching tabs on small typos or code suffixes)
+  if (normA.includes(normB) || normB.includes(normA)) {
+    const minLen = Math.min(normA.length, normB.length);
+    const maxLen = Math.max(normA.length, normB.length);
+    if (minLen >= 4 && minLen / maxLen >= 0.5) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Finds an existing sheet tab that matches requested title (exact or similar)
+ */
+export function findMatchingSheetTab(requestedTabName: string, availableTabs: string[]): string | null {
+  if (!requestedTabName || !availableTabs || availableTabs.length === 0) return null;
+
+  // 1. Exact match
+  const exact = availableTabs.find(t => t.trim() === requestedTabName.trim());
+  if (exact) return exact;
+
+  // 2. Case-insensitive exact match
+  const caseInsensitive = availableTabs.find(t => t.trim().toLowerCase() === requestedTabName.trim().toLowerCase());
+  if (caseInsensitive) return caseInsensitive;
+
+  // 3. Similar match (e.g. "Tech Class (1st Class)" matches "Tech Class", "CS401" matches "Tech Class (CS401)")
+  const similar = availableTabs.find(t => isSimilarTabTitle(t, requestedTabName));
+  if (similar) return similar;
+
+  return null;
+}
+
+/**
+ * Deletes a tab from a Google Sheet by sheetId (used to clean up accidental duplicate tabs)
+ */
+export async function deleteSheetTab(
+  spreadsheetId: string,
+  sheetIdNumber: number,
+  accessToken: string
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              deleteSheet: {
+                sheetId: sheetIdNumber,
+              },
+            },
+          ],
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { success: false, message: err?.error?.message || `HTTP ${res.status}` };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: err.message || 'Failed to delete tab' };
+  }
+}
+
+/**
+ * Ensures a tab exists inside the spreadsheet; reuses existing similar tabs to prevent duplicate pages, or creates if missing.
+ * If the spreadsheet only contains a single default blank tab named "Sheet1", renames it instead of creating a 2nd page!
+ * Returns the resolved tab name.
  */
 export async function ensureSheetTabExists(
   spreadsheetId: string,
   tabName: string,
   accessToken: string
-): Promise<void> {
+): Promise<string> {
   const details = await getSpreadsheetDetails(spreadsheetId, accessToken);
-  const exists = details.sheets.some(s => s.toLowerCase() === tabName.toLowerCase());
   
-  if (exists) return;
+  // 1. Re-use existing matching or similar tab (e.g. "Tech Class" vs "Tech Class (1st Class)")
+  const matched = findMatchingSheetTab(tabName, details.sheets);
+  if (matched) {
+    return matched;
+  }
 
-  // Create new tab/sheet
+  // 2. If spreadsheet has ONLY 1 tab, and that tab is the default blank "Sheet1" / "Sheet 1":
+  // Rename "Sheet1" to the requested tabName so the user doesn't get 2 pages of the same subject!
+  const defaultSheet = details.sheetDetails.find(
+    s => details.sheets.length === 1 && /^sheet\s*1$/i.test(s.title.trim())
+  );
+  if (defaultSheet) {
+    try {
+      const renameRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            requests: [
+              {
+                updateSheetProperties: {
+                  properties: {
+                    sheetId: defaultSheet.sheetId,
+                    title: tabName,
+                  },
+                  fields: 'title',
+                },
+              },
+            ],
+          }),
+        }
+      );
+      if (renameRes.ok) {
+        return tabName;
+      }
+    } catch (e) {
+      console.warn('Could not rename default Sheet1:', e);
+    }
+  }
+
+  // 3. Only create a new tab/sheet if genuinely missing
   const addRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
     {
@@ -103,6 +256,8 @@ export async function ensureSheetTabExists(
     const errorData = await addRes.json().catch(() => ({}));
     console.warn('Could not create tab:', errorData?.error?.message);
   }
+
+  return tabName;
 }
 
 /**
@@ -115,11 +270,11 @@ export async function appendAttendanceViaDirectApi(
   customTabName?: string
 ): Promise<DirectSheetSyncResult> {
   try {
-    const targetTab = customTabName?.trim() || payload.tabName || payload.className || 'Attendance';
+    let targetTab = customTabName?.trim() || payload.sheetTabName || payload.tabName || payload.className || 'Attendance';
 
-    // 1. Ensure tab exists
+    // 1. Ensure tab exists and reuse existing similar tab
     try {
-      await ensureSheetTabExists(spreadsheetId, targetTab, accessToken);
+      targetTab = await ensureSheetTabExists(spreadsheetId, targetTab, accessToken);
     } catch (e) {
       console.warn('Tab check error (will attempt fallback):', e);
     }
@@ -276,9 +431,9 @@ export async function syncWeeklyMatrixViaDirectApi(
   accessToken: string
 ): Promise<DirectSheetSyncResult> {
   try {
-    const targetTab = tabName.trim() || 'Attendance Matrix';
+    let targetTab = tabName.trim() || 'Attendance Register';
     try {
-      await ensureSheetTabExists(spreadsheetId, targetTab, accessToken);
+      targetTab = await ensureSheetTabExists(spreadsheetId, targetTab, accessToken);
     } catch (e) {
       console.warn('Tab check error:', e);
     }
@@ -293,8 +448,11 @@ export async function syncWeeklyMatrixViaDirectApi(
     ];
 
     sessionColumns.forEach(col => {
-      // e.g. "Thu 09-24 [10:00 AM - Class 1]"
-      headerRow.push(`${col.dayName} ${col.dateStr} (${col.sessionTime} - ${col.sessionTitle})`);
+      const isMultiOnDay = sessionColumns.filter(c => c.dateStr === col.dateStr).length > 1;
+      const headerTitle = isMultiOnDay
+        ? `${col.dayName} ${col.dateStr} (${col.sessionTitle})`
+        : `${col.dayName} ${col.dateStr}`;
+      headerRow.push(headerTitle);
     });
 
     headerRow.push('Total Present', '% Attendance');

@@ -28,7 +28,8 @@ import { getAccessToken, isAuthenticatedWithGoogle, getCurrentGoogleUser } from 
 import { 
   extractSpreadsheetId, 
   getSpreadsheetDetails, 
-  appendAttendanceViaDirectApi 
+  appendAttendanceViaDirectApi,
+  deleteSheetTab
 } from '../utils/googleSheetsDirectApi';
 
 interface GoogleSheetConfigModalProps {
@@ -79,6 +80,8 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
 
   const [showAppsScriptGuide, setShowAppsScriptGuide] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [isCleaningTabs, setIsCleaningTabs] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -264,6 +267,63 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
     }
   };
 
+  const handleCleanDuplicateTabs = async () => {
+    setIsCleaningTabs(true);
+    setCleanupMessage(null);
+    try {
+      const token = await getAccessToken();
+      const id = detectedSheetId;
+      if (!token || !id) {
+        setCleanupMessage('Please ensure you are signed in with Google and a valid Google Sheet is linked.');
+        setIsCleaningTabs(false);
+        return;
+      }
+
+      const details = await getSpreadsheetDetails(id, token);
+      if (!details || !details.sheetDetails || details.sheetDetails.length <= 1) {
+        setCleanupMessage('Your Google Sheet already has only 1 tab. No duplicate pages found!');
+        setIsCleaningTabs(false);
+        return;
+      }
+
+      // Check for redundant tabs:
+      // 1. A default blank "Sheet1" when other subject tabs already exist
+      // 2. Duplicate tabs for the same subject, e.g. "Tech Class (1st Class)" when "Tech Class" exists
+      const deletedTabs: string[] = [];
+      const hasSubjectTabs = details.sheetDetails.some(s => !/^sheet\s*1$/i.test(s.title.trim()));
+
+      for (const s of details.sheetDetails) {
+        const isSheet1 = /^sheet\s*1$/i.test(s.title.trim());
+        if (isSheet1 && hasSubjectTabs && details.sheetDetails.length > deletedTabs.length + 1) {
+          const res = await deleteSheetTab(id, s.sheetId, token);
+          if (res.success) deletedTabs.push(s.title);
+          continue;
+        }
+
+        // Check if there's a simpler canonical tab for the same subject
+        const isDuplicateSessionTab = /\((1st|2nd|3rd|\d+th)\s*class\)/i.test(s.title);
+        if (isDuplicateSessionTab && details.sheetDetails.length > deletedTabs.length + 1) {
+          const baseName = s.title.replace(/\s*\((1st|2nd|3rd|\d+th)\s*class\)/i, '').trim();
+          const hasBaseTab = details.sheetDetails.some(other => other.sheetId !== s.sheetId && other.title.trim().toLowerCase() === baseName.toLowerCase());
+          if (hasBaseTab) {
+            const res = await deleteSheetTab(id, s.sheetId, token);
+            if (res.success) deletedTabs.push(s.title);
+          }
+        }
+      }
+
+      if (deletedTabs.length > 0) {
+        setCleanupMessage(`✅ Successfully removed ${deletedTabs.length} duplicate tab(s) (${deletedTabs.join(', ')}). Your workbook now has 1 clean page per subject!`);
+      } else {
+        setCleanupMessage('All tabs in your Google Sheet are unique. No duplicate subject pages detected.');
+      }
+    } catch (e: any) {
+      setCleanupMessage(`Could not clean duplicate tabs: ${e.message || 'Error'}`);
+    } finally {
+      setIsCleaningTabs(false);
+    }
+  };
+
   const handleCopyAppsScript = () => {
     const code = generateGoogleAppsScriptCode(settings.sheetTitle || 'Attendance');
     navigator.clipboard.writeText(code).then(() => {
@@ -443,9 +503,9 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
                     : 'bg-white border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                <div className="font-bold text-slate-900">Per-Class Tabs (Pages)</div>
+                <div className="font-bold text-slate-900">1 Page per Subject (Recommended)</div>
                 <div className="text-[11px] text-slate-500 mt-0.5">
-                  1st class in 1st sheet tab, 2nd class in 2nd tab
+                  Each subject has exactly 1 dedicated tab. All dates (e.g. 13th, 20th) are logged together on that single page.
                 </div>
               </button>
 
@@ -460,10 +520,34 @@ export const GoogleSheetConfigModal: React.FC<GoogleSheetConfigModalProps> = ({
               >
                 <div className="font-bold text-slate-900">Single Master Tab</div>
                 <div className="text-[11px] text-slate-500 mt-0.5">
-                  All classes appended chronologically to one tab
+                  All classes appended chronologically to one shared tab
                 </div>
               </button>
             </div>
+
+            {/* Clean Up Duplicate Tabs Button */}
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div>
+                <div className="text-xs font-bold text-slate-800">Clean Up Duplicate Pages in Sheet</div>
+                <div className="text-[11px] text-slate-500">
+                  Removes empty initial &quot;Sheet1&quot; or duplicate session tabs so you keep strictly 1 clean page per subject.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCleanDuplicateTabs}
+                disabled={isCleaningTabs || !detectedSheetId}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold text-xs rounded-lg transition shrink-0 cursor-pointer"
+              >
+                {isCleaningTabs ? 'Cleaning...' : 'Clean Up Duplicate Pages'}
+              </button>
+            </div>
+
+            {cleanupMessage && (
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-medium">
+                {cleanupMessage}
+              </div>
+            )}
 
             {/* Custom Tab Names per Subject */}
             {syncStrategy === 'per_class_tabs' && classes.length > 0 && (
