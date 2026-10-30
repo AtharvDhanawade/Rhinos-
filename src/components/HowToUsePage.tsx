@@ -25,9 +25,10 @@ import {
   UserCheck
 } from 'lucide-react';
 import { playSuccessBeep, playDuplicateWarning, playErrorBuzz } from '../utils/audio';
+import { ActiveTab } from '../types';
 
 interface HowToUsePageProps {
-  onNavigate: (tab: 'fast-entry' | 'students' | 'classes' | 'sheets') => void;
+  onNavigate: (tab: ActiveTab) => void;
 }
 
 export const HowToUsePage: React.FC<HowToUsePageProps> = ({ onNavigate }) => {

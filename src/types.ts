@@ -97,5 +97,66 @@ export interface DeviceInfo {
   isCurrentDevice?: boolean;
 }
 
-export type ActiveTab = 'fast-entry' | 'students' | 'classes' | 'sheets' | 'how-to-use';
+export interface AssignmentGroup {
+  id: string;
+  subjectId: string;
+  groupNumber: number;
+  groupName: string; // e.g. "Group 1", "Team Alpha"
+  topic?: string;
+  leaderStudentId?: string; // Optional team lead / POC
+  semester?: string; // Semester or Academic Year (e.g. "Full Semester 2026")
+  memberStudentIds: string[]; // student ids in ascending roll order
+  targetDate?: string; // presentation or submission date YYYY-MM-DD
+  presentationStatus?: 'pending' | 'completed' | 'rescheduled';
+  rescheduledDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GmailConfig {
+  email: string;
+  appPassword?: string;
+  senderName?: string;
+  isConnected?: boolean;
+}
+
+export interface SubjectMaterial {
+  id: string;
+  subjectId: string;
+  title: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+  notes?: string;
+  storageKey?: string;
+  fileDataUrl?: string; // fallback preview data
+}
+
+export interface ClassReminder {
+  id: string;
+  subjectId: string; // classId or 'all'
+  title: string;
+  type: 'presentation' | 'assignment' | 'project' | 'exam' | 'quiz' | 'general';
+  dueDate: string; // YYYY-MM-DD
+  dueTime?: string; // e.g. "11:59 PM" or "10:00 AM"
+  informDate?: string; // YYYY-MM-DD (when CR should alert the class)
+  description?: string;
+  completedGroupIds?: string[]; // group IDs that completed
+  rescheduledGroupDates?: Record<string, string>; // groupId -> new date
+  isCompleted?: boolean;
+  createdAt: string;
+}
+
+export type ActiveTab = 
+  | 'fast-entry' 
+  | 'students' 
+  | 'classes' 
+  | 'sheets' 
+  | 'groups' 
+  | 'reminders' 
+  | 'broadcast' 
+  | 'how-to-use';
 

@@ -1,4 +1,4 @@
-import { Student, ClassSubject, AttendanceRecord, WeeklySyncSettings } from '../types';
+import { Student, ClassSubject, AttendanceRecord, WeeklySyncSettings, AssignmentGroup, SubjectMaterial, ClassReminder, GmailConfig } from '../types';
 
 export function extractLast4Digits(rollNo: string): string {
   if (!rollNo) return '';
@@ -156,6 +156,10 @@ const STORAGE_KEYS = {
   ACTIVE_CLASS: 'cr_attendance_active_class_clean_v2',
   SETTINGS: 'cr_attendance_settings_clean_v2',
   GLOBAL_CLASS_TIMES: 'cr_custom_class_times_v1',
+  GROUPS: 'cr_portal_assignment_groups_v1',
+  MATERIALS: 'cr_portal_subject_materials_v1',
+  REMINDERS: 'cr_portal_class_reminders_v1',
+  GMAIL_CONFIG: 'cr_portal_gmail_config_v1',
 };
 
 export function loadStudents(): Student[] {
@@ -304,10 +308,100 @@ export function saveGlobalClassTimes(times: string[]) {
   }
 }
 
+export function loadAssignmentGroups(): AssignmentGroup[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.GROUPS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveAssignmentGroups(groups: AssignmentGroup[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+  } catch (err) {
+    console.error('Failed to save assignment groups:', err);
+  }
+}
+
+export function loadSubjectMaterials(): SubjectMaterial[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MATERIALS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveSubjectMaterials(materials: SubjectMaterial[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.MATERIALS, JSON.stringify(materials));
+  } catch (err) {
+    console.error('Failed to save subject materials:', err);
+  }
+}
+
+export function loadReminders(): ClassReminder[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.REMINDERS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveReminders(reminders: ClassReminder[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.REMINDERS, JSON.stringify(reminders));
+  } catch (err) {
+    console.error('Failed to save reminders:', err);
+  }
+}
+
+export function loadGmailConfig(): GmailConfig {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.GMAIL_CONFIG);
+    if (!raw) {
+      return {
+        email: 'businessofficial1590@gmail.com',
+        senderName: 'Class Representative (CR)',
+        isConnected: false,
+      };
+    }
+    const parsed = JSON.parse(raw);
+    return parsed || {
+      email: 'businessofficial1590@gmail.com',
+      senderName: 'Class Representative (CR)',
+      isConnected: false,
+    };
+  } catch {
+    return {
+      email: 'businessofficial1590@gmail.com',
+      senderName: 'Class Representative (CR)',
+      isConnected: false,
+    };
+  }
+}
+
+export function saveGmailConfig(config: GmailConfig): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.GMAIL_CONFIG, JSON.stringify(config));
+  } catch (err) {
+    console.error('Failed to save Gmail config:', err);
+  }
+}
+
 export function exportFullDatabaseBackup(): string {
   try {
     const backup = {
-      version: '1.0',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
       students: loadStudents(),
       classes: loadClasses(),
@@ -315,6 +409,9 @@ export function exportFullDatabaseBackup(): string {
       activeClassId: loadActiveClassId(),
       settings: loadSettings(),
       globalClassTimes: loadGlobalClassTimes(),
+      assignmentGroups: loadAssignmentGroups(),
+      subjectMaterials: loadSubjectMaterials(),
+      reminders: loadReminders(),
     };
     return JSON.stringify(backup, null, 2);
   } catch (e) {
@@ -330,7 +427,7 @@ export function downloadBackupFile(): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rhino_attendance_backup_${getTodayDateString()}.json`;
+    a.download = `cr_portal_backup_${getTodayDateString()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -362,6 +459,15 @@ export function restoreFullDatabaseBackup(jsonString: string): boolean {
     }
     if (Array.isArray(parsed.globalClassTimes)) {
       saveGlobalClassTimes(parsed.globalClassTimes);
+    }
+    if (Array.isArray(parsed.assignmentGroups)) {
+      saveAssignmentGroups(parsed.assignmentGroups);
+    }
+    if (Array.isArray(parsed.subjectMaterials)) {
+      saveSubjectMaterials(parsed.subjectMaterials);
+    }
+    if (Array.isArray(parsed.reminders)) {
+      saveReminders(parsed.reminders);
     }
     return true;
   } catch (e) {

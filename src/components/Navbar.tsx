@@ -9,7 +9,11 @@ import {
   Clock, 
   Crown,
   Laptop,
-  Radio
+  Radio,
+  Bell,
+  MessageSquare,
+  Mail,
+  FileText
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -23,6 +27,8 @@ interface NavbarProps {
   deviceRole?: DeviceRole;
   isFirebaseSynced?: boolean;
   connectedDevicesCount?: number;
+  groupsCount?: number;
+  pendingRemindersCount?: number;
   onOpenSyncModal?: () => void;
 }
 
@@ -37,6 +43,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   deviceRole = 'admin',
   isFirebaseSynced = true,
   connectedDevicesCount = 1,
+  groupsCount = 0,
+  pendingRemindersCount = 0,
   onOpenSyncModal
 }) => {
   const percent = totalStudents > 0 ? Math.round((todayMarkedCount / totalStudents) * 100) : 0;
@@ -46,7 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-13 py-1">
           
-          {/* Logo & Brand */}
+          {/* Logo & Brand (Attendance removed from app name) */}
           <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/20 text-white shrink-0">
               <GraduationCap className="w-4 h-4" />
@@ -54,11 +62,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div>
               <div className="flex items-center space-x-1.5">
                 <span className="font-extrabold text-sm sm:text-base tracking-tight text-white">
-                  RHINO ATTENDANCE <span className="text-blue-400 font-bold">( CR PORTAL )</span>
+                  RHINO <span className="text-blue-400 font-bold">( CR PORTAL )</span>
                 </span>
               </div>
               <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
-                WOXEN UNI
+                WOXEN UNI • CLASS REPRESENTATIVE
               </p>
             </div>
           </div>
@@ -102,77 +110,122 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Tab Navigation */}
-
-        <nav className="flex space-x-1 sm:space-x-2 border-t border-slate-800/80 pt-1.5 pb-1.5 overflow-x-auto no-scrollbar">
+        <nav className="flex space-x-1 sm:space-x-1.5 border-t border-slate-800/80 pt-1.5 pb-1.5 overflow-x-auto no-scrollbar">
           <button
             id="tab-fast-entry"
             onClick={() => setActiveTab('fast-entry')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
               activeTab === 'fast-entry'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-semibold'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
           >
             <Zap className="w-4 h-4 text-amber-300" />
-            <span>1. Quick 4-Digit Entry</span>
+            <span>1. Quick 4-Digit</span>
           </button>
 
           <button
             id="tab-students"
             onClick={() => setActiveTab('students')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
               activeTab === 'students'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-semibold'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
           >
             <Users className="w-4 h-4 text-sky-300" />
-            <span>2. Student Roster</span>
+            <span>2. Students</span>
           </button>
 
           <button
             id="tab-classes"
             onClick={() => setActiveTab('classes')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
               activeTab === 'classes'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 font-semibold'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
           >
             <BookOpen className="w-4 h-4 text-emerald-300" />
-            <span>3. Classes & Roll Call</span>
+            <span>3. Classes</span>
           </button>
 
           <button
             id="tab-sheets"
             onClick={() => setActiveTab('sheets')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
               activeTab === 'sheets'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20 font-semibold'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
           >
             <Table2 className="w-4 h-4 text-emerald-300" />
-            <span>4. Google Sheets</span>
-            <span className="ml-1 bg-emerald-500/30 text-emerald-200 text-[10px] px-1.5 py-0.2 rounded font-bold uppercase">
-              Live Sync
-            </span>
+            <span>4. G-Sheet</span>
+          </button>
+
+          {/* New Tab 5: Subject Assignment Groups & Study PDFs */}
+          <button
+            id="tab-groups"
+            onClick={() => setActiveTab('groups')}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+              activeTab === 'groups'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20 font-semibold'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Users className="w-4 h-4 text-indigo-300" />
+            <span>5. Groups & PDFs</span>
+            {groupsCount > 0 && (
+              <span className="ml-1 bg-indigo-500/30 text-indigo-200 text-[10px] px-1.5 py-0.2 rounded font-bold">
+                {groupsCount}
+              </span>
+            )}
+          </button>
+
+          {/* Tab 6: Reminders */}
+          <button
+            id="tab-reminders"
+            onClick={() => setActiveTab('reminders')}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+              activeTab === 'reminders'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-500/20 font-semibold'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Bell className="w-4 h-4 text-amber-300" />
+            <span>6. Reminders</span>
+            {pendingRemindersCount > 0 && (
+              <span className="ml-1 bg-amber-500/30 text-amber-200 text-[10px] px-1.5 py-0.2 rounded font-bold">
+                {pendingRemindersCount}
+              </span>
+            )}
+          </button>
+
+          {/* Tab 7: GMail */}
+          <button
+            id="tab-broadcast"
+            onClick={() => setActiveTab('broadcast')}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+              activeTab === 'broadcast'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-500/20 font-semibold'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Mail className="w-4 h-4 text-rose-300" />
+            <span>7. GMail</span>
           </button>
 
           <button
             id="tab-how-to-use"
             onClick={() => setActiveTab('how-to-use')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition whitespace-nowrap ${
               activeTab === 'how-to-use'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20 font-semibold'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20 font-semibold'
                 : 'text-slate-300 hover:text-white hover:bg-slate-800'
             }`}
           >
-            <BookOpen className="w-4 h-4 text-indigo-300" />
-            <span>How to Use (Demo Guide)</span>
-            <span className="ml-1 bg-indigo-500/30 text-indigo-200 text-[10px] px-1.5 py-0.2 rounded font-bold uppercase">
-              Guide
-            </span>
+            <BookOpen className="w-4 h-4 text-purple-300" />
+            <span>Guide</span>
           </button>
         </nav>
 

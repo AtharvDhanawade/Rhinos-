@@ -1,6 +1,6 @@
 {
-  "name": "CR Attendance Tracker",
-  "description": "Smart CR attendance management with quick 4-digit roll number entry, student roster, subject & class management, roll-call mode, and live Google Sheets weekly sync with QR code sharing for teachers.",
+  "name": "CR Portal",
+  "description": "All-in-one Class Representative portal for student roster, subject assignment groups, professor study PDFs, presentation deadline tracking, WhatsApp broadcasts, and Google Sheets live sync.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

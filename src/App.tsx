@@ -7,7 +7,10 @@ import {
   AttendanceStatus, 
   WeeklySyncSettings,
   DeviceInfo,
-  DeviceRole
+  DeviceRole,
+  AssignmentGroup,
+  SubjectMaterial,
+  ClassReminder
 } from './types';
 import { 
   loadStudents, 
@@ -21,7 +24,13 @@ import {
   loadSettings, 
   saveSettings, 
   getTodayDateString,
-  sortStudentsByLast4Digits
+  sortStudentsByLast4Digits,
+  loadAssignmentGroups,
+  saveAssignmentGroups,
+  loadSubjectMaterials,
+  saveSubjectMaterials,
+  loadReminders,
+  saveReminders
 } from './utils/storage';
 import {
   subscribeToStudents,
@@ -48,6 +57,9 @@ import { FastEntryPage } from './components/FastEntryPage';
 import { StudentsPage } from './components/StudentsPage';
 import { ClassesPage } from './components/ClassesPage';
 import { SheetsPage } from './components/SheetsPage';
+import { GroupsPage } from './components/GroupsPage';
+import { RemindersPage } from './components/RemindersPage';
+import { BroadcastPage } from './components/BroadcastPage';
 import { HowToUsePage } from './components/HowToUsePage';
 import { TeacherAbsenteeDocPage } from './components/TeacherAbsenteeDocPage';
 import { TeacherLiveViewModal } from './components/TeacherLiveViewModal';
@@ -60,6 +72,9 @@ export default function App() {
   const [classes, setClasses] = useState<ClassSubject[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [activeClassId, setActiveClassId] = useState<string>('');
+  const [groups, setGroups] = useState<AssignmentGroup[]>([]);
+  const [materials, setMaterials] = useState<SubjectMaterial[]>([]);
+  const [reminders, setReminders] = useState<ClassReminder[]>([]);
   const [settings, setSettings] = useState<WeeklySyncSettings>({
     googleSheetUrl: '',
     webhookUrl: '',
@@ -97,6 +112,9 @@ export default function App() {
     setActiveClassId(loadedClassId);
     setSettings(loadedSettings);
     setDeviceRole(getStoredDeviceRole());
+    setGroups(loadAssignmentGroups());
+    setMaterials(loadSubjectMaterials());
+    setReminders(loadReminders());
 
     // 2. Register this device in the Firestore cloud directory
     registerDeviceHeartbeat().catch(() => {});
@@ -484,6 +502,66 @@ export default function App() {
     showToast('Google Sheets sync settings updated');
   };
 
+  // Assignment Group Handlers
+  const handleSaveGroup = (group: AssignmentGroup) => {
+    setGroups(prev => {
+      const idx = prev.findIndex(g => g.id === group.id);
+      const updated = idx >= 0 ? prev.map((g, i) => i === idx ? group : g) : [...prev, group];
+      saveAssignmentGroups(updated);
+      return updated;
+    });
+    showToast(`Saved ${group.groupName}`);
+  };
+
+  const handleDeleteGroup = (groupId: string) => {
+    setGroups(prev => {
+      const updated = prev.filter(g => g.id !== groupId);
+      saveAssignmentGroups(updated);
+      return updated;
+    });
+    showToast('Group deleted');
+  };
+
+  // Subject Material / PDF Handlers
+  const handleSaveMaterial = (material: SubjectMaterial) => {
+    setMaterials(prev => {
+      const idx = prev.findIndex(m => m.id === material.id);
+      const updated = idx >= 0 ? prev.map((m, i) => i === idx ? material : m) : [material, ...prev];
+      saveSubjectMaterials(updated);
+      return updated;
+    });
+    showToast('PDF study material saved');
+  };
+
+  const handleDeleteMaterial = (materialId: string) => {
+    setMaterials(prev => {
+      const updated = prev.filter(m => m.id !== materialId);
+      saveSubjectMaterials(updated);
+      return updated;
+    });
+    showToast('Material deleted');
+  };
+
+  // Reminders / Deadlines Handlers
+  const handleSaveReminder = (reminder: ClassReminder) => {
+    setReminders(prev => {
+      const idx = prev.findIndex(r => r.id === reminder.id);
+      const updated = idx >= 0 ? prev.map((r, i) => i === idx ? reminder : r) : [reminder, ...prev];
+      saveReminders(updated);
+      return updated;
+    });
+    showToast('Reminder saved');
+  };
+
+  const handleDeleteReminder = (reminderId: string) => {
+    setReminders(prev => {
+      const updated = prev.filter(r => r.id !== reminderId);
+      saveReminders(updated);
+      return updated;
+    });
+    showToast('Reminder deleted');
+  };
+
   const currentClass = classes.find(c => c.id === activeClassId) || classes[0] || {
     id: 'cls-tech',
     name: 'Tech Class',
@@ -552,6 +630,8 @@ export default function App() {
         deviceRole={deviceRole}
         isFirebaseSynced={isFirebaseSynced}
         connectedDevicesCount={connectedDevices.length}
+        groupsCount={groups.length}
+        pendingRemindersCount={reminders.filter(r => !r.isCompleted).length}
         onOpenSyncModal={() => setIsSyncModalOpen(true)}
       />
 
@@ -615,6 +695,7 @@ export default function App() {
             activeClassId={activeClassId}
             allRecords={records}
             settings={settings}
+            groups={groups}
             onUpdateSettings={handleUpdateSettings}
             onBatchMarkAttendance={handleBatchMarkAttendance}
             onDeleteSessionRecords={(classId, date, sessionId, sessionTime) => {
@@ -631,6 +712,54 @@ export default function App() {
               showToast('Attendance session updated');
             }}
           />
+        )}
+
+        {/* New Page: Subject Assignment Groups & Study PDFs */}
+        {activeTab === 'groups' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <GroupsPage
+              students={students}
+              classes={classes}
+              activeClassId={activeClassId}
+              groups={groups}
+              materials={materials}
+              onSaveGroup={handleSaveGroup}
+              onDeleteGroup={handleDeleteGroup}
+              onSaveMaterial={handleSaveMaterial}
+              onDeleteMaterial={handleDeleteMaterial}
+            />
+          </div>
+        )}
+
+        {/* New Page: Deadlines & Reminders (Multi-Day Presentation Tracker) */}
+        {activeTab === 'reminders' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <RemindersPage
+              students={students}
+              classes={classes}
+              activeClassId={activeClassId}
+              reminders={reminders}
+              groups={groups}
+              onSaveReminder={handleSaveReminder}
+              onDeleteReminder={handleDeleteReminder}
+              onSaveGroup={handleSaveGroup}
+              onNavigateToBroadcast={() => setActiveTab('broadcast')}
+            />
+          </div>
+        )}
+
+        {/* GMail Page: Class Email Announcements & Document Dispatcher */}
+        {activeTab === 'broadcast' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <BroadcastPage
+              students={students}
+              classes={classes}
+              groups={groups}
+              reminders={reminders}
+              materials={materials}
+              activeClassId={activeClassId}
+            />
+          </div>
         )}
 
         {activeTab === 'how-to-use' && (

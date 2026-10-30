@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import QRCode from 'qrcode';
-import { Student, ClassSubject, AttendanceRecord, WeeklySyncSettings } from '../types';
-import { getWeekNumber, getWeekDateRange, getTodayDateString, sortStudentsByLast4Digits } from '../utils/storage';
+import { Student, ClassSubject, AttendanceRecord, WeeklySyncSettings, AssignmentGroup } from '../types';
+import { getWeekNumber, getWeekDateRange, getTodayDateString, sortStudentsByLast4Digits, loadAssignmentGroups } from '../utils/storage';
 import { 
   Table2, 
   QrCode, 
@@ -26,13 +26,15 @@ import {
   X,
   AlertCircle,
   Clock,
-  Edit2
+  Edit2,
+  Users
 } from 'lucide-react';
 import { TeacherLiveViewModal } from './TeacherLiveViewModal';
 import { GoogleSheetConfigModal } from './GoogleSheetConfigModal';
 import { CopyStudentsForSheetsModal } from './CopyStudentsForSheetsModal';
 import { WorkspaceConfirmModal } from './WorkspaceConfirmModal';
 import { EditSessionAttendanceModal, EditableSessionInfo } from './EditSessionAttendanceModal';
+import { SubjectGroupsSheetView } from './SubjectGroupsSheetView';
 import { buildTeacherPortalUrl, buildTeacherDocUrl, getCleanPublicBaseUrl } from '../utils/qrHelper';
 import { 
   buildSheetSessionPayload, 
@@ -54,6 +56,7 @@ interface SheetsPageProps {
   activeClassId: string;
   allRecords: AttendanceRecord[];
   settings: WeeklySyncSettings;
+  groups?: AssignmentGroup[];
   onUpdateSettings: (settings: WeeklySyncSettings) => void;
   onBatchMarkAttendance?: (records: AttendanceRecord[]) => void;
   onDeleteSessionRecords?: (classId: string, date: string, sessionId?: string, sessionTime?: string) => void;
@@ -65,10 +68,17 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
   activeClassId,
   allRecords,
   settings,
+  groups,
   onUpdateSettings,
   onBatchMarkAttendance,
   onDeleteSessionRecords
 }) => {
+  // Sub-pages: 'attendance' (1st page) vs 'groups' (2nd page - subject-wise groups)
+  const [sheetSubTab, setSheetSubTab] = useState<'attendance' | 'groups'>('attendance');
+  const effectiveGroups = useMemo(() => {
+    return groups && groups.length > 0 ? groups : loadAssignmentGroups();
+  }, [groups]);
+
   // Always sort students in ascending order based on last 4 digits
   const sortedStudents = useMemo(() => sortStudentsByLast4Digits(students), [students]);
 
@@ -850,14 +860,56 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-emerald-900 via-teal-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-3 border border-emerald-400/30">
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Multi-Subject Google Sheets Synchronization</span>
-          </div>
+
+      {/* Sub-Views Switcher: Attendance Sheet vs Subject Groups */}
+      <div className="bg-slate-100/90 p-1 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-1.5 max-w-xl">
+        <button
+          onClick={() => setSheetSubTab('attendance')}
+          className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm transition-all ${
+            sheetSubTab === 'attendance'
+              ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900 font-semibold hover:bg-slate-200/40'
+          }`}
+        >
+          <FileSpreadsheet className={`w-4 h-4 ${sheetSubTab === 'attendance' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <span>Attendance Sheet</span>
+        </button>
+
+        <button
+          onClick={() => setSheetSubTab('groups')}
+          className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm transition-all ${
+            sheetSubTab === 'groups'
+              ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-extrabold'
+              : 'text-slate-600 hover:text-slate-900 font-semibold hover:bg-slate-200/40'
+          }`}
+        >
+          <Users className={`w-4 h-4 ${sheetSubTab === 'groups' ? 'text-indigo-600' : 'text-slate-400'}`} />
+          <span>Subject Groups</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+            sheetSubTab === 'groups' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-slate-200 text-slate-600'
+          }`}>
+            {effectiveGroups.length}
+          </span>
+        </button>
+      </div>
+
+      {sheetSubTab === 'groups' ? (
+        <SubjectGroupsSheetView
+          students={students}
+          classes={classes}
+          activeClassId={selectedClassId}
+          groups={effectiveGroups}
+          settings={settings}
+        />
+      ) : (
+        <>
+          {/* Top Banner */}
+          <div className="bg-gradient-to-r from-emerald-900 via-teal-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-3 border border-emerald-400/30">
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Multi-Subject Google Sheets Synchronization</span>
+              </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
             Live Google Sheets Portal
           </h1>
@@ -1514,6 +1566,8 @@ export const SheetsPage: React.FC<SheetsPageProps> = ({
           </div>
 
         </div>
+        </>
+      )}
 
       {/* Edit Session Attendance Modal */}
       <EditSessionAttendanceModal

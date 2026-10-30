@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import nodemailer from "nodemailer";
 
 // Attendance Store File Path
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -344,6 +345,110 @@ async function startServer() {
     res.json({
       logs: (serverState as any).sheetLogs || [],
     });
+  });
+
+  // Gmail SMTP Connection Verification
+  app.post("/api/email/verify", async (req, res) => {
+    try {
+      const { user, appPassword } = req.body;
+      if (!user || !appPassword) {
+        return res.status(400).json({ error: "Gmail address and App Password are required." });
+      }
+
+      const cleanPass = String(appPassword).replace(/\s+/g, "");
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: user.trim(),
+          pass: cleanPass,
+        },
+      });
+
+      await transporter.verify();
+      res.json({ success: true, message: `Connected to Gmail account (${user}) successfully!` });
+    } catch (err: any) {
+      console.error("Gmail verification error:", err);
+      let msg = err.message || "Failed to authenticate with Gmail";
+      if (msg.includes("Invalid login") || msg.includes("535-5.7.8")) {
+        msg = "Invalid Gmail address or App Password. Please generate a 16-character App Password in Google Account > Security > 2-Step Verification.";
+      }
+      res.status(400).json({ error: msg });
+    }
+  });
+
+  // Gmail Send Email (Single recipient, multiple, or BCC whole class, with attachments support)
+  app.post("/api/email/send", async (req, res) => {
+    try {
+      const { user, appPassword, to, bcc, subject, text, html, senderName, attachments } = req.body;
+      if (!user || !appPassword) {
+        return res.status(400).json({ error: "Sender Gmail and App Password must be provided." });
+      }
+      if (!to && !bcc) {
+        return res.status(400).json({ error: "Recipient email (to or bcc) is required." });
+      }
+
+      const cleanPass = String(appPassword).replace(/\s+/g, "");
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: user.trim(),
+          pass: cleanPass,
+        },
+      });
+
+      const fromAddress = senderName 
+        ? `"${senderName}" <${user.trim()}>` 
+        : `"Class Representative (CR)" <${user.trim()}>`;
+
+      const mailOptions: any = {
+        from: fromAddress,
+        subject: subject || "Notice from Class Representative",
+        text: text || "",
+      };
+
+      if (to) mailOptions.to = Array.isArray(to) ? to.join(", ") : to;
+      if (bcc) mailOptions.bcc = Array.isArray(bcc) ? bcc.join(", ") : bcc;
+      if (html) mailOptions.html = html;
+
+      // Handle attachments if provided
+      if (Array.isArray(attachments) && attachments.length > 0) {
+        mailOptions.attachments = attachments.map((att: any) => {
+          if (att.dataUri) {
+            return {
+              filename: att.filename || "attachment",
+              path: att.dataUri,
+              contentType: att.contentType,
+            };
+          }
+          if (att.content) {
+            return {
+              filename: att.filename || "attachment",
+              content: att.content,
+              contentType: att.contentType,
+            };
+          }
+          return {
+            filename: att.filename || "attachment",
+            path: att.path,
+          };
+        });
+      }
+
+      const info = await transporter.sendMail(mailOptions);
+      res.json({
+        success: true,
+        messageId: info.messageId,
+        accepted: info.accepted,
+        message: `Email dispatched successfully via Gmail (${info.accepted.length} recipient${info.accepted.length === 1 ? '' : 's'})!`,
+      });
+    } catch (err: any) {
+      console.error("Gmail sending error:", err);
+      let msg = err.message || "Failed to send email via Gmail";
+      if (msg.includes("Invalid login") || msg.includes("535-5.7.8")) {
+        msg = "Gmail authentication failed. Please check your 16-character App Password.";
+      }
+      res.status(500).json({ error: msg });
+    }
   });
 
   // Direct Standalone Teacher Report Endpoint (0-bundle, instant load for any phone browser)
